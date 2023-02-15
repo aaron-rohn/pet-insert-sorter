@@ -38,6 +38,8 @@ std::pair<std::vector<int>, std::vector<int>> init_connections(int n)
         sfd.push_back(fd);
     }
 
+    std::cout << "Listening on 127.0.0.1 port "  << BASE_PORT << "+" << n << std::endl;
+
     for (auto fd : sfd)
     {
         struct sockaddr_in address;
@@ -64,23 +66,24 @@ void read_socket(
         std::condition_variable &data_cv,
         std::queue<std::vector<Single>> &event_queue
 ) {
-    char stream_buf[1024*1024*6];
-    socketbuf sb(fd, stream_buf, sizeof(stream_buf));
+    socketbuf sb(fd);
     std::istream singles_stream(&sb);
 
-    Record::go_to_tt(singles_stream, 0);
+    Record::go_to_tt(singles_stream, 0, 0);
 
     {
-        std::unique_lock<std::mutex> ulck(lck);
-        std::cout << "got reset after receiving " << sb.total_read << " bytes" << std::endl;
+        std::lock_guard<std::mutex> lg(lck);
+        std::cout << "Found reset" << std::endl;
     }
 
-    size_t tt_per_sec = 10000;
-    unsigned long long current_tt = tt_per_sec;
+    size_t tt_per_sec = 1000, tt_incr = tt_per_sec * 10;
+    uint64_t current_tt = tt_incr, nsingles = 0;
+
     while (singles_stream.good())
     {
-        auto singles = Record::go_to_tt(singles_stream, current_tt);
-        current_tt += tt_per_sec;
+        auto singles = Record::go_to_tt(singles_stream, current_tt, nsingles);
+        nsingles = singles.size() * 1.1; // overestimate when reserving space
+        current_tt += tt_incr;
 
         std::unique_lock<std::mutex> ulck(lck);
         event_queue.push(std::move(singles));
@@ -105,8 +108,8 @@ void sort_data(
 
     while (true)
     {
-        bool all_finished = std::all_of(finished.begin(), finished.end(),
-                [&](std::atomic_bool &f){ return bool(f); });
+        bool all_finished = true;
+        for (const auto &f : finished) all_finished &= f;
         if (all_finished && sorters.size() == 0) break;
 
         if (!all_finished)
@@ -133,9 +136,12 @@ void sort_data(
                         &CoincidenceData::sort_span, std::move(singles)));
         }
 
+        // check if the oldest worker has finished sorting
         auto status = sorters.front().wait_for(std::chrono::seconds(0));
+
         if (status == std::future_status::ready)
         {
+            // get and save the sorted coincidences
             Coincidences cd = sorters.front().get();
             CoincidenceData::write(cf, cd);
             sorters.pop();
@@ -165,7 +171,8 @@ int main(int argc, char *argv[])
     std::vector<std::thread> readers;
     for (int i = 0; i < n; i++)
     {
-        readers.emplace_back(read_socket, cfd[i],
+        readers.emplace_back(read_socket,
+                cfd[i],
                 std::ref(lck),
                 std::ref(finished[i]),
                 std::ref(data_cv[i]),
@@ -179,11 +186,8 @@ int main(int argc, char *argv[])
             std::ref(data_cv),
             std::ref(data_queues));
 
-    for (auto &t : readers)
-        t.join();
-
+    for (auto &t : readers) t.join();
     coincidence_sorter.join();
-
     close_connections(sfd, cfd);
     return 0;
 }

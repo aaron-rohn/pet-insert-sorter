@@ -2,16 +2,17 @@
 #define SINGLES_H
 
 #include <unistd.h>
-
+#include <mutex>
+#include <iostream>
 #include <cmath>
 #include <cstring>
 #include <vector>
 #include <fstream>
 #include <atomic>
 #include <queue>
+#include <array>
+#include <thread>
 #include <condition_variable>
-
-#include <iostream>
 
 #include "constants.h"
 
@@ -98,7 +99,7 @@ namespace Record
 
     void align(std::istream&, uint8_t[]);
 
-    std::vector<Single> go_to_tt(std::istream&, uint64_t);
+    std::vector<Single> go_to_tt(std::istream&, uint64_t, uint64_t);
 };
 
 struct TimeTag
@@ -194,29 +195,29 @@ struct SingleData
         y(std::round((yF+yR)/2.0 * scale)) {}
 };
 
+#define SIZE (1024*8)
+
 class socketbuf: public std::streambuf
 {
     typedef std::streambuf::traits_type traits_type;
 
     int fd;
-    char *ptr;
-    size_t n;
+    std::array<char, SIZE> current_buf;
+    std::queue<std::array<char, SIZE>> recv_data;
+    std::thread receiver;
+    std::mutex lck;
+    std::condition_variable cv;
+    bool finished = false;
 
-    int underflow()
-    {
-        size_t recvd = read(fd, ptr, n);
-        setg(ptr, ptr, ptr + recvd);
-        total_read += recvd;
-
-        return gptr() == egptr()
-            ? traits_type::eof()
-            : traits_type::to_int_type(*gptr());
-    }
+    void receive();
+    int underflow();
     
     public:
-    unsigned long long total_read = 0;
-    socketbuf(int fd, char* ptr, size_t n):
-        fd(fd), ptr(ptr), n(n) {}
+
+    socketbuf(int fd):
+        fd(fd), receiver(&socketbuf::receive, this) {}
+
+    ~socketbuf() { receiver.join(); }
 };
 
 #endif

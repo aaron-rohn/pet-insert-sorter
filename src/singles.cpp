@@ -24,14 +24,17 @@ void Record::align(std::istream &f, uint8_t data[])
 
 std::vector<Single> Record::go_to_tt(
         std::istream &f,
-        uint64_t value
+        uint64_t value,
+        uint64_t approx_size
 ) {
     uint8_t data[event_size];
     uint64_t last_tt_value = 0;
     bool synced = false;
+    TimeTag tt;
 
     std::vector<Single> sgls;
-    TimeTag tt;
+    if (approx_size > 0)
+        sgls.reserve(approx_size);
 
     while(f.good())
     {
@@ -52,10 +55,65 @@ std::vector<Single> Record::go_to_tt(
         }
         else
         {
-            sgls.emplace_back(data, tt);
+            // don't save events when waiting for reset
+            if (value != 0)
+                sgls.emplace_back(data, tt);
         }
     }
 
     return sgls;
 }
 
+void socketbuf::receive()
+{
+    while (true)
+    {
+        std::array<char, SIZE> buf;
+        size_t n = 0;
+
+        // iterate until the array is full
+        while (n < SIZE)
+        {
+            size_t recvd = read(fd, buf.data(), SIZE - n);
+
+            // check if error or socket closed
+            if (recvd < 1)
+            {
+                {
+                    std::lock_guard<std::mutex> lg(lck);
+                    finished = true;
+                }
+                cv.notify_all();
+                return;
+            }
+            n += recvd;
+        }
+
+        // push the array to the queue
+        {
+            std::lock_guard<std::mutex> lg(lck);
+            recv_data.push(std::move(buf));
+        }
+        cv.notify_all();
+    }
+}
+
+int socketbuf::underflow()
+{
+    {
+        // try to pull a new array from the queue
+        std::unique_lock<std::mutex> lg(lck);
+        cv.wait(lg, [&]{ return finished || recv_data.size() > 0; });
+
+        // check if error or socket closed
+        if (finished && recv_data.size() == 0) return traits_type::eof();
+
+        current_buf = std::move(recv_data.front());
+        recv_data.pop();
+    }
+
+    // update streambuf pointers
+    char *ptr = current_buf.data();
+    setg(ptr, ptr, ptr + SIZE);
+    return traits_type::to_int_type(*gptr());
+}

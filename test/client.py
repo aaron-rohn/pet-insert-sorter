@@ -14,6 +14,8 @@ fils = [open(f, 'rb') for f in files]
 
 buf_size = 1024*1024
 
+time.sleep(1)
+
 good = True
 while(good):
     for f,s in zip(fils, socks):
