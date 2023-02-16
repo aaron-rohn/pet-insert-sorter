@@ -1,5 +1,4 @@
 #include <chrono>
-#include <netinet/in.h>
 #include <unistd.h>
 #include <vector>
 #include <tuple>
@@ -10,6 +9,9 @@
 #include <atomic>
 #include <algorithm>
 #include <future>
+#include <bitset>
+
+#include <netinet/in.h>
 
 #include "../include/singles.h"
 #include "../include/coincidence.h"
@@ -38,7 +40,7 @@ std::pair<std::vector<int>, std::vector<int>> init_connections(int n)
         sfd.push_back(fd);
     }
 
-    std::cout << "Listening on 127.0.0.1 port "  << BASE_PORT << "+" << n << std::endl;
+    std::cout << "Listening on 127.0.0.1 port "  << BASE_PORT << ":" << BASE_PORT+n-1 << std::endl;
 
     for (auto fd : sfd)
     {
@@ -76,8 +78,7 @@ void read_socket(
         std::cout << "Found reset" << std::endl;
     }
 
-    size_t tt_per_sec = 1000, tt_incr = tt_per_sec * 10;
-    uint64_t current_tt = tt_incr, nsingles = 0;
+    uint64_t tt_incr = 1000, current_tt = tt_incr, nsingles = 0;
 
     while (singles_stream.good())
     {
@@ -102,19 +103,16 @@ void sort_data(
         std::vector<std::queue<std::vector<Single>>> &singles_queues
 ) {
     std::ofstream cf(coincidence_file, std::ios::out | std::ios::binary);
-    const size_t n = singles_cv.size();
-
+    const size_t n = singles_queues.size();
     std::queue<std::future<Coincidences>> sorters;
+    bool all_finished = false;
 
-    while (true)
+    while (!all_finished || !sorters.empty())
     {
-        bool all_finished = true;
-        for (const auto &f : finished) all_finished &= f;
-        if (all_finished && sorters.size() == 0) break;
-
         if (!all_finished)
         {
             std::vector<std::vector<Single>> singles(n);
+            all_finished = true;
 
             for (int i = 0; i < n; i++)
             {
@@ -125,7 +123,8 @@ void sort_data(
                 singles_cv[i].wait(ulck,
                         [&]{ return finished[i] || !sq.empty(); });
 
-                if (sq.size() > 0)
+                all_finished &= finished[i];
+                if (!sq.empty())
                 {
                     singles[i] = std::move(sq.front());
                     sq.pop();
@@ -136,15 +135,17 @@ void sort_data(
                         &CoincidenceData::sort_span, std::move(singles)));
         }
 
-        // check if the oldest worker has finished sorting
-        auto status = sorters.front().wait_for(std::chrono::seconds(0));
-
-        if (status == std::future_status::ready)
+        if (!sorters.empty())
         {
-            // get and save the sorted coincidences
-            Coincidences cd = sorters.front().get();
-            CoincidenceData::write(cf, cd);
-            sorters.pop();
+            // check if the oldest worker has finished sorting
+            auto status = sorters.front().wait_for(std::chrono::seconds(0));
+            if (status == std::future_status::ready)
+            {
+                // get and save the sorted coincidences
+                Coincidences cd = sorters.front().get();
+                CoincidenceData::write(cf, cd);
+                sorters.pop();
+            }
         }
     }
 }
@@ -158,8 +159,8 @@ int main(int argc, char *argv[])
     }
     std::string coin_filename(argv[1]);
 
-    auto [sfd, cfd] = init_connections(4);
-    const size_t n = cfd.size();
+    const size_t n = 4;
+    auto [sfd, cfd] = init_connections(n);
 
     std::vector<std::atomic_bool> finished(n);
     for (auto &f : finished) f = false;

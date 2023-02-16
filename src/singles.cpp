@@ -64,36 +64,38 @@ std::vector<Single> Record::go_to_tt(
     return sgls;
 }
 
+ssize_t recvall(int fd, char *ptr, size_t sz)
+{
+    char *beg = ptr, *end = beg + sz;
+    while (beg < end)
+    {
+        ssize_t recv = read(fd, beg, end - beg);
+        beg += recv;
+
+        // check if error or socket closed
+        if (recv < 1) return recv;
+    }
+    return sz;
+}
+
 void socketbuf::receive()
 {
-    while (true)
+    while (!finished)
     {
-        std::array<char, SIZE> buf;
+        std::vector<char> buf(SIZE);
         size_t n = 0;
+        ssize_t result = recvall(fd, buf.data(), SIZE);
 
-        // iterate until the array is full
-        while (n < SIZE)
-        {
-            size_t recvd = read(fd, buf.data(), SIZE - n);
-
-            // check if error or socket closed
-            if (recvd < 1)
-            {
-                {
-                    std::lock_guard<std::mutex> lg(lck);
-                    finished = true;
-                }
-                cv.notify_all();
-                return;
-            }
-            n += recvd;
-        }
-
-        // push the array to the queue
         {
             std::lock_guard<std::mutex> lg(lck);
-            recv_data.push(std::move(buf));
+
+            // check if error or socket closed
+            if (result < 1) finished = true;
+
+            // push the data to the queue
+            else recv_data.push(std::move(buf));
         }
+
         cv.notify_all();
     }
 }
@@ -101,12 +103,12 @@ void socketbuf::receive()
 int socketbuf::underflow()
 {
     {
-        // try to pull a new array from the queue
+        // try to pull a new data from the queue
         std::unique_lock<std::mutex> lg(lck);
-        cv.wait(lg, [&]{ return finished || recv_data.size() > 0; });
+        cv.wait(lg, [&]{ return finished || !recv_data.empty(); });
 
         // check if error or socket closed
-        if (finished && recv_data.size() == 0) return traits_type::eof();
+        if (finished && recv_data.empty()) return traits_type::eof();
 
         current_buf = std::move(recv_data.front());
         recv_data.pop();

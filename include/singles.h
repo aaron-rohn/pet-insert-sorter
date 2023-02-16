@@ -195,15 +195,15 @@ struct SingleData
         y(std::round((yF+yR)/2.0 * scale)) {}
 };
 
-#define SIZE (1024*8)
+#define SIZE (1024*1024*8)
 
 class socketbuf: public std::streambuf
 {
     typedef std::streambuf::traits_type traits_type;
 
     int fd;
-    std::array<char, SIZE> current_buf;
-    std::queue<std::array<char, SIZE>> recv_data;
+    std::vector<char> current_buf;
+    std::queue<std::vector<char>> recv_data;
     std::thread receiver;
     std::mutex lck;
     std::condition_variable cv;
