@@ -1,11 +1,9 @@
 import socket, time
 
-files = ['/mnt/acq/test/192.168.1.101.SGL',
-         '/mnt/acq/test/192.168.1.102.SGL',
-         '/mnt/acq/test/192.168.1.103.SGL',
-         '/mnt/acq/test/192.168.1.104.SGL']
+files = ['192.168.1.101.SGL', '192.168.1.102.SGL',
+         '192.168.1.103.SGL', '192.168.1.104.SGL']
 
-base_port = 10000
+base_port = 20000
 
 socks = [socket.socket(socket.AF_INET, socket.SOCK_STREAM) for _ in files]
 [s.connect(('127.0.0.1', base_port + i)) for i,s in enumerate(socks)]
@@ -24,6 +22,6 @@ while(good):
             good = False
             break
         s.send(data)
-    #time.sleep(0.1)
+    time.sleep(0.1)
 
 [s.close() for s in socks]

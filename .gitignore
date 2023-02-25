@@ -2,3 +2,5 @@ build/*
 .*
 !.gitignore
 *.COIN
+*.SGL
+compile_flags.txt
