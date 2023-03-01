@@ -19,9 +19,7 @@
 #include "singles.h"
 #include "coincidence.h"
 
-#define BASE_PORT 20000
-#define SIZE (1024*1024*8)
-
+#define BASE_PORT 10000
 namespace Sorter
 {
     class socketbuf;
@@ -47,6 +45,9 @@ namespace Sorter
 class Sorter::socketbuf: public std::streambuf
 {
     typedef std::streambuf::traits_type traits_type;
+    static const size_t max_size = 128; // max number of buffers to queue
+    static const size_t buf_size = 8*1024*1024;
+    static const size_t nsingles_per_buf = buf_size / Record::event_size;
 
     int fd;
     std::vector<char> current_buf;
@@ -55,6 +56,7 @@ class Sorter::socketbuf: public std::streambuf
     std::mutex lck;
     std::condition_variable cv;
     bool finished = false;
+    unsigned long long nsingles = 0;
 
     void receive();
     int underflow();

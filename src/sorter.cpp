@@ -58,11 +58,13 @@ ssize_t Sorter::recvall(int fd, char *ptr, size_t sz)
 
 void Sorter::socketbuf::receive()
 {
+    //auto start = std::chrono::high_resolution_clock::now();
+
     while (!finished)
     {
-        std::vector<char> buf(SIZE);
+        std::vector<char> buf(buf_size);
         size_t n = 0;
-        ssize_t result = Sorter::recvall(fd, buf.data(), SIZE);
+        ssize_t result = Sorter::recvall(fd, buf.data(), buf_size);
 
         {
             std::lock_guard<std::mutex> lg(lck);
@@ -71,11 +73,25 @@ void Sorter::socketbuf::receive()
             if (result < 1) finished = true;
 
             // push the data to the queue
-            else recv_data.push(std::move(buf));
+            else if (recv_data.size() < max_size)
+            {
+                recv_data.push(std::move(buf));
+                nsingles += nsingles_per_buf;
+            }
+            // else overflow
         }
 
         cv.notify_all();
     }
+
+    /*
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    auto ds = std::chrono::duration_cast<std::chrono::seconds>(duration);
+
+    std::lock_guard<std::mutex> lg(lck);
+    std::cout << nsingles << " " << ds.count() << std::endl;
+    */
 }
 
 int Sorter::socketbuf::underflow()
