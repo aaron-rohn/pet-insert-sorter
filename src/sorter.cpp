@@ -42,29 +42,33 @@ std::vector<Single> Sorter::go_to_tt(
     return sgls;
 }
 
-ssize_t Sorter::recvall(int fd, char *ptr, size_t sz)
+ssize_t Sorter::recvall(int fd, char *ptr, size_t *sz)
 {
-    char *beg = ptr, *end = beg + sz;
-    while (beg < end)
+    char *end = ptr + *sz;
+    *sz = 0;
+
+    while (ptr < end)
     {
-        ssize_t recv = read(fd, beg, end - beg);
-        beg += recv;
+        ssize_t recv = read(fd, ptr, end - ptr);
 
         // check if error or socket closed
         if (recv < 1) return recv;
+
+        ptr += recv;
+        *sz += recv;
     }
-    return sz;
+
+    return 1;
 }
 
 void Sorter::socketbuf::receive()
 {
-    //auto start = std::chrono::high_resolution_clock::now();
-
     while (!finished)
     {
         std::vector<char> buf(buf_size);
-        size_t n = 0;
-        ssize_t result = Sorter::recvall(fd, buf.data(), buf_size);
+        size_t n = 0, sz = buf_size;
+        ssize_t result = Sorter::recvall(fd, buf.data(), &sz);
+        if (sz != buf_size) buf.resize(sz);
 
         {
             std::lock_guard<std::mutex> lg(lck);
@@ -73,7 +77,7 @@ void Sorter::socketbuf::receive()
             if (result < 1) finished = true;
 
             // push the data to the queue
-            else if (recv_data.size() < max_size)
+            if (recv_data.size() < max_size && sz > 0)
             {
                 recv_data.push(std::move(buf));
                 nsingles += nsingles_per_buf;
@@ -83,15 +87,6 @@ void Sorter::socketbuf::receive()
 
         cv.notify_all();
     }
-
-    /*
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end - start;
-    auto ds = std::chrono::duration_cast<std::chrono::seconds>(duration);
-
-    std::lock_guard<std::mutex> lg(lck);
-    std::cout << nsingles << " " << ds.count() << std::endl;
-    */
 }
 
 int Sorter::socketbuf::underflow()

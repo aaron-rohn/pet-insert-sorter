@@ -23,7 +23,7 @@
 namespace Sorter
 {
     class socketbuf;
-    ssize_t recvall(int fd, char *ptr, size_t sz);
+    ssize_t recvall(int, char*, size_t*);
     std::vector<Single> go_to_tt(std::istream& ,uint64_t, uint64_t);
     Coincidences sort_span(std::vector<std::vector<Single>>);
 
