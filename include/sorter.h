@@ -12,6 +12,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <algorithm>
+#include <numeric>
 #include <future>
 #include <bitset>
 #include <unistd.h>
@@ -22,32 +23,35 @@
 #define BASE_PORT 10000
 namespace Sorter
 {
+    /*
     class socketbuf;
     ssize_t recvall(int, char*, size_t*);
-    std::vector<Single> go_to_tt(std::istream& ,uint64_t, uint64_t);
-    Coincidences sort_span(std::vector<std::vector<Single>>);
+    std::vector<SingleData> go_to_tt(std::istream& ,uint64_t, uint64_t);
+    */
+    Coincidences sort_span(std::vector<std::span<SingleData>>);
 
     void read_socket(
             int,
             std::mutex&,
             std::atomic_bool&,
             std::condition_variable&,
-            std::queue<std::vector<Single>>&);
+            std::queue<std::span<SingleData>>&);
 
     void sort_data(
             std::string,
             std::mutex&,
             std::vector<std::atomic_bool>&,
             std::vector<std::condition_variable>&,
-            std::vector<std::queue<std::vector<Single>>>&);
+            std::vector<std::queue<std::span<SingleData>>>&);
 }
 
+/*
 class Sorter::socketbuf: public std::streambuf
 {
     typedef std::streambuf::traits_type traits_type;
     static const size_t max_size = 128; // max number of buffers to queue
     static const size_t buf_size = 8*1024*1024;
-    static const size_t nsingles_per_buf = buf_size / Record::event_size;
+    static const size_t nsingles_per_buf = buf_size / 16;
 
     int fd;
     std::vector<char> current_buf;
@@ -68,5 +72,6 @@ class Sorter::socketbuf: public std::streambuf
 
     ~socketbuf() { receiver.join(); }
 };
+*/
 
 #endif

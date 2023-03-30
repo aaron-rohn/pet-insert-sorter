@@ -3,6 +3,11 @@
 import socket, time, datetime, threading, subprocess
 import numpy as np
 
+#files = ['/mnt/acq/20230310/sensitivity/singles/45_192.168.1.101.SGL',
+#         '/mnt/acq/20230310/sensitivity/singles/45_192.168.1.102.SGL',
+#         '/mnt/acq/20230310/sensitivity/singles/45_192.168.1.103.SGL',
+#         '/mnt/acq/20230310/sensitivity/singles/45_192.168.1.104.SGL']
+
 files = ['/mnt/acq/20230217/test/192.168.1.101.SGL',
          '/mnt/acq/20230217/test/192.168.1.102.SGL',
          '/mnt/acq/20230217/test/192.168.1.103.SGL',

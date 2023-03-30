@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
 
     std::mutex lck;
     std::vector<std::condition_variable> data_cv(n);
-    std::vector<std::queue<std::vector<Single>>> data_queues(n);
+    std::vector<std::queue<std::span<SingleData>>> data_queues(n);
 
     std::vector<std::thread> readers;
     for (int i = 0; i < n; i++)

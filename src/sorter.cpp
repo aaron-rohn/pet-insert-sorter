@@ -1,18 +1,20 @@
 #include "sorter.h"
+#include <numeric>
 
-std::vector<Single> Sorter::go_to_tt(
+/*
+std::vector<SingleData> Sorter::go_to_tt(
         std::istream &f,
         uint64_t value,
         uint64_t approx_size
 ) {
+    std::vector<SingleData> sgls;
+    if (approx_size > 0)
+        sgls.reserve(approx_size);
+
     uint8_t data[Record::event_size];
     uint64_t last_tt_value = 0;
     bool synced = false;
     TimeTag tt;
-
-    std::vector<Single> sgls;
-    if (approx_size > 0)
-        sgls.reserve(approx_size);
 
     while(f.good())
     {
@@ -108,24 +110,22 @@ int Sorter::socketbuf::underflow()
     setg(ptr, ptr, ptr + current_buf.size());
     return traits_type::to_int_type(*gptr());
 }
+*/
 
 Coincidences Sorter::sort_span(
-        std::vector<std::vector<Single>> all_singles
+        std::vector<std::span<SingleData>> all_singles 
 ) {
-    size_t n = 0, offset = 0;
-    for (const auto &sgl : all_singles)
-        n += sgl.size();
+    size_t n = 0;
+    for (const auto &s : all_singles) n += s.size();
 
-    std::vector<Single> singles(n);
+    std::vector<SingleData> singles;
     for (const auto &sgl : all_singles)
     {
-        auto size = sgl.size() * sizeof(Single);
-        std::memcpy((char*)singles.data() + offset,
-                    (char*)sgl.data(), size);
-        offset += size;
+        singles.insert(singles.end(), sgl.begin(), sgl.end());
+        std::free(sgl.data());
     }
 
-    std::sort(singles.begin(), singles.end());
+    std::ranges::sort(singles, {}, &SingleData::abstime);
     return CoincidenceData::sort(singles);
 }
 
@@ -133,12 +133,10 @@ void Sorter::read_socket(
         int fd, std::mutex &lck,
         std::atomic_bool &finished,
         std::condition_variable &data_cv,
-        std::queue<std::vector<Single>> &event_queue
+        std::queue<std::span<SingleData>> &event_queue
 ) {
-    Sorter::socketbuf sb(fd);
-    std::istream singles_stream(&sb);
-
-    Sorter::go_to_tt(singles_stream, 0, 0);
+    SinglesReader rdr = reader_new(fd, 0);
+    go_to_tt(&rdr, 0);
 
     {
         std::lock_guard<std::mutex> lg(lck);
@@ -147,19 +145,25 @@ void Sorter::read_socket(
 
     uint64_t tt_incr = 1000, current_tt = tt_incr, nsingles = 0;
 
-    while (singles_stream.good())
+    while(!(rdr.finished && reader_empty(&rdr)))
     {
-        auto singles = Sorter::go_to_tt(singles_stream, current_tt, nsingles);
-        nsingles = singles.size() * 1.1; // overestimate when reserving space
-        current_tt += tt_incr;
+        SingleData *singles = singles_to_tt(&rdr, current_tt, &nsingles);
 
-        std::unique_lock<std::mutex> ulck(lck);
-        event_queue.push(std::move(singles));
+        {
+            std::unique_lock<std::mutex> ulck(lck);
+            event_queue.push(std::span(singles, nsingles));
+        }
+
         data_cv.notify_all();
+
+        nsingles = nsingles * 1.1; // slightly over-estimate when allocating space
+        current_tt += tt_incr;
     }
 
-    std::unique_lock<std::mutex> ulck(lck);
-    finished = true;
+    {
+        std::unique_lock<std::mutex> ulck(lck);
+        finished = true;
+    }
     data_cv.notify_all();
 }
 
@@ -168,7 +172,7 @@ void Sorter::sort_data(
         std::mutex &lck,
         std::vector<std::atomic_bool> &finished,
         std::vector<std::condition_variable> &singles_cv,
-        std::vector<std::queue<std::vector<Single>>> &singles_queues
+        std::vector<std::queue<std::span<SingleData>>> &singles_queues
 ) {
     std::ofstream cf(coincidence_file, std::ios::out | std::ios::binary);
     const size_t n = singles_queues.size();
@@ -179,7 +183,7 @@ void Sorter::sort_data(
     {
         if (!all_finished)
         {
-            std::vector<std::vector<Single>> singles(n);
+            std::vector<std::span<SingleData>> singles(n);
             all_finished = true;
 
             for (int i = 0; i < n; i++)
@@ -194,13 +198,13 @@ void Sorter::sort_data(
                 all_finished &= finished[i];
                 if (!sq.empty())
                 {
-                    singles[i] = std::move(sq.front());
+                    singles[i] = sq.front();
                     sq.pop();
                 }
             }
 
             sorters.push(std::async(std::launch::async,
-                        &Sorter::sort_span, std::move(singles)));
+                        &Sorter::sort_span, singles));
         }
 
         if (!sorters.empty())
