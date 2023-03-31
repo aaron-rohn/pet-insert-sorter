@@ -23,55 +23,19 @@
 #define BASE_PORT 10000
 namespace Sorter
 {
-    /*
-    class socketbuf;
-    ssize_t recvall(int, char*, size_t*);
-    std::vector<SingleData> go_to_tt(std::istream& ,uint64_t, uint64_t);
-    */
-    Coincidences sort_span(std::vector<std::span<SingleData>>);
+    Coincidences sort_span(const std::vector<cspan<SingleData>>);
 
     void read_socket(
-            int,
-            std::mutex&,
+            int, std::mutex&,
             std::atomic_bool&,
             std::condition_variable&,
-            std::queue<std::span<SingleData>>&);
+            std::queue<cspan<SingleData>>&);
 
     void sort_data(
-            std::string,
-            std::mutex&,
+            std::string, std::mutex&,
             std::vector<std::atomic_bool>&,
             std::vector<std::condition_variable>&,
-            std::vector<std::queue<std::span<SingleData>>>&);
+            std::vector<std::queue<cspan<SingleData>>>&);
 }
-
-/*
-class Sorter::socketbuf: public std::streambuf
-{
-    typedef std::streambuf::traits_type traits_type;
-    static const size_t max_size = 128; // max number of buffers to queue
-    static const size_t buf_size = 8*1024*1024;
-    static const size_t nsingles_per_buf = buf_size / 16;
-
-    int fd;
-    std::vector<char> current_buf;
-    std::queue<std::vector<char>> recv_data;
-    std::thread receiver;
-    std::mutex lck;
-    std::condition_variable cv;
-    bool finished = false;
-    unsigned long long nsingles = 0;
-
-    void receive();
-    int underflow();
-    
-    public:
-
-    socketbuf(int fd):
-        fd(fd), receiver(&socketbuf::receive, this) {}
-
-    ~socketbuf() { receiver.join(); }
-};
-*/
 
 #endif

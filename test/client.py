@@ -18,7 +18,7 @@ bytes_per_single = 16
 base_port = 10000
 buf_size = 1024*1024
 
-def worker(i, pause = 4e-3):
+def worker(i, pause = 2e-3):
     s = socket.create_connection(('127.0.0.1', base_port + i))
     with open(files[i], 'rb') as f:
         while True:
